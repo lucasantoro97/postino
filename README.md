@@ -13,7 +13,12 @@ Dockerized, headless email + calendar agent:
 
 ## Quick start
 
-1) Create `.env` (or use Docker secrets).
+1) Create your configuration file:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` to set your credentials (see **Configuration** below).
+
 2) Start the service:
 
 ```bash
@@ -49,7 +54,7 @@ LLM (OpenRouter):
 
 Google Calendar:
 
-- `GOOGLE_OAUTH_CLIENT_SECRET_JSON` (path inside container)
+- `GOOGLE_OAUTH_CLIENT_SECRET_JSON` (host path, required for setup only)
 - `GOOGLE_CALENDAR_ID` (default `primary`)
 - `TZ` (timezone, e.g. `Europe/Rome`)
 
@@ -104,41 +109,24 @@ stored in `./data/google_token.json`.
    - Add your Google account under **Test users** (if the app is in testing).
 4) APIs & Services → Credentials → **Create credentials** → **OAuth client ID**:
    - Application type: **Desktop app** (recommended for this local flow).
-   - Download the JSON and save it locally as `./secrets/google_client.json` (example path).
+   - Download the JSON and save it locally (e.g., as `./secrets/google_client.json`).
 
-### 2) Make the JSON available to the container
+### 2) Run the Auth Helper
 
-Recommended (no manual `-v`): set `GOOGLE_OAUTH_CLIENT_SECRET_JSON` in `.env` to the host path of the downloaded JSON.
+1) In your `.env`, set `GOOGLE_OAUTH_CLIENT_SECRET_JSON` to the **absolute path** of your downloaded JSON file.
+   ```bash
+   GOOGLE_OAUTH_CLIENT_SECRET_JSON=/home/user/projects/agente-email/secrets/google_client.json
+   ```
 
-Then run the helper service (it bind-mounts the file to `/run/secrets/google_client.json`):
+2) Run the auth helper service:
+   ```bash
+   docker compose --profile auth run --rm --service-ports auth-google
+   ```
 
-```bash
-docker compose --profile auth run --rm --service-ports auth-google
-```
+3) Follow the link printed in the terminal, authenticate with Google, and copy the code back if requested (or it might handle the redirect if ports are mapped).
+   - The helper will write the token to `./data/google_token.json`.
 
-Alternative (manual bind mount):
-
-- Create `./secrets/` and put `google_client.json` inside it.
-- Then run the auth helper with an extra volume mount:
-
-```bash
-docker compose run --rm -p 8080:8080 \
-  -v ./secrets:/run/secrets \
-  agent agente-email-auth-google --client-secret /run/secrets/google_client.json --token /data/google_token.json
-```
-
-### 3) Run the auth helper (writes the token)
-
-Run a helper locally with a callback port mapped:
-
-```bash
-docker compose run --rm -p 8080:8080 agent \
-  agente-email-auth-google --client-secret /run/secrets/google_client.json --token /data/google_token.json
-```
-
-This writes `./data/google_token.json` (mounted into the container).
-
-### 4) Configure the agent to use Calendar
+### 3) Configure the agent to use Calendar
 
 In your `.env`:
 
