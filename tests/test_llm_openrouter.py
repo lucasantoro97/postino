@@ -51,6 +51,26 @@ def test_chat_json_handles_markdown_list(mock_cfg):
     assert result == [{"key": "value"}]
 
 
+def test_chat_json_list_wraps_single_object(mock_cfg):
+    llm = OpenRouterLlm(mock_cfg)
+    llm._client = MagicMock()
+
+    mock_resp = MagicMock()
+    mock_resp.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='{"summary":"Sync","start":"2025-01-10 10:00","end":null,"timezone":"UTC"}'
+            )
+        )
+    ]
+    llm._client.chat.completions.create.return_value = mock_resp
+
+    result = llm._chat_json_list(system="sys", user="user")
+    assert result == [
+        {"summary": "Sync", "start": "2025-01-10 10:00", "end": None, "timezone": "UTC"}
+    ]
+
+
 def test_chat_json_raises_on_invalid_json(mock_cfg):
     llm = OpenRouterLlm(mock_cfg)
     llm._client = MagicMock()

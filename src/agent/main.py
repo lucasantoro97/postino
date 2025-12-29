@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .config import Settings
@@ -11,7 +11,7 @@ from .email_parse import parse_email
 from .executive_brief import build_executive_brief, should_run_executive_brief
 from .google_calendar import CalendarConfig, GoogleCalendarClient
 from .graph import build_email_graph
-from .imap_client import ImapClient
+from .imap_client import ImapClient, ImapMessageNotFound
 from .llm_openrouter import HeuristicLlm, LlmClient, OpenRouterConfig, OpenRouterLlm
 from .logging import configure_logging
 from .recaps import (
@@ -27,9 +27,7 @@ from .state_store import StateStore
 logger = logging.getLogger(__name__)
 
 
-def initial_backfill_uids(
-    *, deps: Deps, inbox: str, lookback_days: int
-) -> list[int]:
+def initial_backfill_uids(*, deps: Deps, inbox: str, lookback_days: int) -> list[int]:
     since_date = (datetime.now(tz=timezone.utc) - timedelta(days=lookback_days)).date()
     uids = deps.imap.uid_search_since_date(since_date)
     all_uids = deps.imap.uid_search_all()
@@ -75,8 +73,36 @@ def ensure_folders(*, settings: Settings, imap: ImapClient) -> None:
 def process_one_uid(*, deps: Deps, graph, uid: int) -> None:  # type: ignore[no-untyped-def]
     settings = deps.settings
     deps.imap.select(settings.imap_folder_inbox, readonly=False)
-    raw = deps.imap.fetch_rfc822(uid)
+    try:
+        raw = deps.imap.fetch_rfc822(uid)
+    except ImapMessageNotFound:
+        # The message may have been expunged/moved between SEARCH and FETCH, or it may be a stale
+        # retry entry in the state DB. Treat as non-fatal and stop retry churn.
+        logger.info(
+            "Email missing on fetch, skipping",
+            extra={
+                "event": "email_missing",
+                "email_uid": uid,
+                "email_folder": settings.imap_folder_inbox,
+            },
+        )
+        deps.store.set_filing_result(
+            settings.imap_folder_inbox,
+            uid,
+            filing_folder=settings.imap_folder_inbox,
+            status="moved",
+        )
+        return
     meta, text, fingerprint = parse_email(raw, folder=settings.imap_folder_inbox, uid=uid)
+    logger.info(
+        "Email fetched",
+        extra={
+            "event": "email_fetched",
+            "email_uid": meta.uid,
+            "email_folder": meta.folder,
+            "imap_fetch": "body_peek",
+        },
+    )
 
     deps.store.upsert_message_base(
         folder=meta.folder,
@@ -243,6 +269,7 @@ def maybe_run_replied_digest(*, deps: Deps) -> None:
     deps.store.record_replied_digest(local_date=local_date, draft_uid=sent_uid)
     logger.info("Reply digest sent", extra={"event": "reply_digest_sent"})
 
+
 def reconcile_replied_messages(*, deps: Deps) -> None:
     settings = deps.settings
     if not settings.imap_sent_folder:
@@ -292,10 +319,14 @@ def reconcile_replied_messages(*, deps: Deps) -> None:
                     )
                     continue
                 deps.imap.move(uids[0], dest_mailbox=replied_folder)
-                deps.store.mark_replied(candidate.folder, candidate.uid, replied_folder=replied_folder)
-                local_date = datetime.now(tz=timezone.utc).astimezone(
-                    ZoneInfo(settings.tz)
-                ).strftime("%Y-%m-%d")
+                deps.store.mark_replied(
+                    candidate.folder, candidate.uid, replied_folder=replied_folder
+                )
+                local_date = (
+                    datetime.now(tz=timezone.utc)
+                    .astimezone(ZoneInfo(settings.tz))
+                    .strftime("%Y-%m-%d")
+                )
                 deps.store.record_replied_move(
                     local_date=local_date,
                     message_id=message_id,

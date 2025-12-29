@@ -3,11 +3,11 @@ from __future__ import annotations
 import imaplib
 import re
 import socket
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, cast
 from datetime import date
+from typing import Any, cast
 
 _APPENDUID_RE = re.compile(rb"APPENDUID \d+ (\d+)")
 _LIST_QUOTED_RE = re.compile(rb'"([^"]*)"')
@@ -19,6 +19,10 @@ class ImapAppendResult:
     ok: bool
     appended_uid: int | None = None
     raw_response: bytes | None = None
+
+
+class ImapMessageNotFound(RuntimeError):
+    """Raised when a UID cannot be fetched (e.g. it was expunged/moved already)."""
 
 
 class ImapClient:
@@ -182,7 +186,7 @@ class ImapClient:
         self._selected_readonly = readonly
 
     @contextmanager
-    def temporary_select(self, mailbox: str, *, readonly: bool = False) -> Iterable[None]:
+    def temporary_select(self, mailbox: str, *, readonly: bool = False) -> Iterator[None]:
         previous = self._selected_mailbox
         previous_readonly = self._selected_readonly
         self.select(mailbox, readonly=readonly)
@@ -246,9 +250,14 @@ class ImapClient:
 
     def fetch_rfc822(self, uid: int) -> bytes:
         assert self._imap is not None
-        typ, data = cast(tuple[str, list[Any]], self._imap.uid("FETCH", str(uid), "(RFC822)"))
-        if typ != "OK" or not data or not data[0]:
+        # Use BODY.PEEK[] so we don't mark messages as \Seen just by fetching content.
+        # Many IMAP servers set \Seen on RFC822/BODY[] fetches without PEEK.
+        typ, data = cast(tuple[str, list[Any]], self._imap.uid("FETCH", str(uid), "(BODY.PEEK[])"))
+        if typ != "OK":
             raise RuntimeError(f"IMAP UID FETCH failed: {typ} {data}")
+        if not data or not data[0]:
+            # Some servers return OK with empty/None payload for vanished UIDs.
+            raise ImapMessageNotFound(f"IMAP UID FETCH returned no data for uid={uid}: {data}")
         # data can be [(b'UID ...', b'raw...'), b')']
         for item in data:
             if (

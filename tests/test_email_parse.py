@@ -45,3 +45,65 @@ def test_parse_email_lists_attachments() -> None:
     _, text, _ = parse_email(msg.as_bytes(), folder="INBOX", uid=2)
     assert "[Attachments]" in text
     assert "file.bin" in text
+
+
+def test_parse_email_includes_calendar_invite_text_calendar_attachment() -> None:
+    msg = EmailMessage()
+    msg["From"] = "a@example.com"
+    msg["To"] = "b@example.com"
+    msg["Subject"] = "Invite"
+    msg.set_content("Please join")
+    ics = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\n"
+        "SUMMARY:Test Meeting\r\n"
+        "DESCRIPTION:Join https://meet.google.com/abc-defg-hij\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    msg.add_attachment(
+        ics.encode("utf-8"), maintype="text", subtype="calendar", filename="invite.ics"
+    )
+
+    _, text, _ = parse_email(msg.as_bytes(), folder="INBOX", uid=3)
+    assert "[CalendarInvite]" in text
+    assert "BEGIN:VCALENDAR" in text
+    assert "https://meet.google.com/abc-defg-hij" in text
+
+
+def test_parse_email_unfolds_folded_ics_lines() -> None:
+    msg = EmailMessage()
+    msg["From"] = "a@example.com"
+    msg["To"] = "b@example.com"
+    msg["Subject"] = "Invite"
+    msg.set_content("Please join")
+    ics = (
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\n"
+        "DESCRIPTION:Join https://meet.google.com/abc-defg-\r\n"
+        " hij\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    msg.add_attachment(
+        ics.encode("utf-8"), maintype="text", subtype="calendar", filename="invite.ics"
+    )
+
+    _, text, _ = parse_email(msg.as_bytes(), folder="INBOX", uid=4)
+    assert "https://meet.google.com/abc-defg-hij" in text
+
+
+def test_parse_email_malformed_calendar_does_not_crash() -> None:
+    msg = EmailMessage()
+    msg["From"] = "a@example.com"
+    msg["To"] = "b@example.com"
+    msg["Subject"] = "Invite"
+    msg.set_content("Please join")
+    msg.add_attachment(
+        b"\xff\xfe\x00\x00BEGIN:VCALENDAR", maintype="text", subtype="calendar", filename="x.ics"
+    )
+
+    meta, text, fingerprint = parse_email(msg.as_bytes(), folder="INBOX", uid=5)
+    assert meta.uid == 5
+    assert fingerprint
+    assert "[CalendarInvite]" in text

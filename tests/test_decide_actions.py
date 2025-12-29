@@ -10,7 +10,9 @@ from agent.nodes.decide_actions import decide_actions_node
 
 def _build_deps() -> Deps:
     settings = Settings(IMAP_HOST="h", IMAP_USERNAME="me@example.com", IMAP_PASSWORD="x")
-    return Deps(settings=settings, store=MagicMock(), imap=MagicMock(), llm=MagicMock(), calendar=None)
+    return Deps(
+        settings=settings, store=MagicMock(), imap=MagicMock(), llm=MagicMock(), calendar=None
+    )
 
 
 def test_deadline_text_triggers_event_actions() -> None:

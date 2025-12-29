@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Protocol
-import re
 
 from openai import OpenAI
 from pydantic import ValidationError
@@ -132,9 +132,14 @@ class OpenRouterLlm(LlmClient):
 
     def _chat_json_list(self, *, system: str, user: str) -> list:
         parsed = self._chat_json_value(system=system, user=user)
-        if not isinstance(parsed, list):
-            raise RuntimeError(f"LLM did not return a JSON list: {str(parsed)[:500]}")
-        return parsed
+        if isinstance(parsed, list):
+            return parsed
+        # Some models occasionally return a single object instead of a singleton list.
+        # This is especially common when the prompt asks for an "array" but the model
+        # decides it found exactly one item.
+        if isinstance(parsed, dict) and {"summary", "start"}.issubset(parsed.keys()):
+            return [parsed]
+        raise RuntimeError(f"LLM did not return a JSON list: {str(parsed)[:500]}")
 
     def classify(self, *, meta: EmailMeta, text: str) -> ClassificationResult:
         system = (
@@ -209,6 +214,9 @@ class OpenRouterLlm(LlmClient):
             "Create events for meetings or explicit scheduling requests. "
             "For tasks with a deadline (e.g., 'by Friday', 'entro il 12/01'), "
             "create a short TODO event at the deadline time and prefix the summary with 'TODO:'. "
+            "If you see a video-call / meeting URL (e.g. meet.google.com, zoom.us, "
+            "teams.microsoft.com, webex), "
+            "put it in the 'location' field and also include it in 'evidence'. "
             "Return ONLY valid JSON: an array of event candidates. "
             "Do not invent dates or times; only extract if present."
         )

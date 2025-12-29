@@ -42,7 +42,11 @@ def test_calendar_creation_persists_event(tmp_path) -> None:  # type: ignore[no-
         timezone="UTC",
         description="Meet",
     )
-    state = {"actions": ActionPlan(create_calendar_event=True), "meta": meta, "validated_event": event}
+    state = {
+        "actions": ActionPlan(create_calendar_event=True),
+        "meta": meta,
+        "validated_event": event,
+    }
     out = create_calendar_event_node(state, deps)
     assert out["calendar_event_id"] == "evt-123"
     assert store.get_message_calendar_event_id("INBOX", 1) == "evt-123"
@@ -72,6 +76,10 @@ def test_calendar_missing_does_not_raise(tmp_path) -> None:  # type: ignore[no-u
         timezone="UTC",
         description="Meet",
     )
-    state = {"actions": ActionPlan(create_calendar_event=True), "meta": meta, "validated_event": event}
+    state = {
+        "actions": ActionPlan(create_calendar_event=True),
+        "meta": meta,
+        "validated_event": event,
+    }
     out = create_calendar_event_node(state, deps)
     assert out.get("calendar_event_id") is None

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
-
 import re
+from typing import Any
 
 from ..deps import Deps
 from ..llm_openrouter import decide_actions
 from ..models import ClassificationCategory
-
 
 _DEADLINE_KEYWORDS = (
     "deadline",

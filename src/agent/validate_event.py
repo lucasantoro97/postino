@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil import parser as date_parser
 
+from .meeting_links import extract_meeting_links
 from .models import EventCandidate, ValidatedEvent
 
 
@@ -38,6 +39,7 @@ def validate_event_candidate(
     candidate: EventCandidate,
     *,
     default_tz: str,
+    context_text: str = "",
     now_utc: datetime | None = None,
     default_duration_minutes: int = 60,
     max_duration_minutes: int = 8 * 60,
@@ -81,7 +83,19 @@ def validate_event_candidate(
     if candidate.evidence:
         description_lines.append("Evidence:")
         description_lines.extend(f"- {e}" for e in candidate.evidence[:10])
+
+    link_context = "\n".join(
+        x for x in [candidate.location or "", "\n".join(candidate.evidence), context_text] if x
+    )
+    meeting_links = extract_meeting_links(link_context)
+    if meeting_links:
+        description_lines.append("Meeting links:")
+        description_lines.extend(f"- {u}" for u in meeting_links[:5])
     description = "\n".join(description_lines).strip()
+
+    location = candidate.location
+    if (location is None or not location.strip()) and meeting_links:
+        location = meeting_links[0]
 
     return EventValidationResult(
         ok=True,
@@ -90,7 +104,7 @@ def validate_event_candidate(
             start_iso=start.isoformat(),
             end_iso=end.isoformat(),
             timezone=str(tz.key),
-            location=candidate.location,
+            location=location,
             description=description,
         ),
     )

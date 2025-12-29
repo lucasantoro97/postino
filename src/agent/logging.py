@@ -34,7 +34,16 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
         # Extract all extra fields passed via logger.info(..., extra={...})
-        for key in ("event", "email_uid", "email_folder", "dest_folder", "message_id"):
+        for key in (
+            "event",
+            "email_uid",
+            "email_folder",
+            "dest_folder",
+            "message_id",
+            "imap_fetch",
+            "calendar_invite_detected",
+            "meeting_links_found",
+        ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
         return json.dumps(_redact(payload), ensure_ascii=False)

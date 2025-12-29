@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 import agent.imap_client as imap_client
 
 
@@ -182,3 +184,38 @@ def test_imap_fetch_flags_parses(monkeypatch) -> None:  # type: ignore[no-untype
     flags = c.fetch_flags(1)
     assert "\\Seen" in flags
     assert "\\Answered" in flags
+
+
+def test_imap_fetch_rfc822_uses_body_peek(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    fake = FakeImap(capabilities=set())
+
+    def fake_ctor(host: str, port: int):  # type: ignore[no-untyped-def]
+        return fake
+
+    monkeypatch.setattr(imap_client.imaplib, "IMAP4_SSL", fake_ctor)
+    c = imap_client.ImapClient(host="h", port=993, username="u", password="p")
+    c.connect()
+    c.select("INBOX")
+    _ = c.fetch_rfc822(1)
+    assert ("FETCH", "1", "(BODY.PEEK[])") in fake.uid_calls
+
+
+def test_imap_fetch_rfc822_raises_not_found_on_empty_payload(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    class FakeImapMissing(FakeImap):
+        def uid(self, command: str, *args):  # type: ignore[no-untyped-def]
+            self.uid_calls.append((command,) + args)
+            if command == "FETCH":
+                return ("OK", [None])
+            return super().uid(command, *args)
+
+    fake = FakeImapMissing(capabilities=set())
+
+    def fake_ctor(host: str, port: int):  # type: ignore[no-untyped-def]
+        return fake
+
+    monkeypatch.setattr(imap_client.imaplib, "IMAP4_SSL", fake_ctor)
+    c = imap_client.ImapClient(host="h", port=993, username="u", password="p")
+    c.connect()
+    c.select("INBOX")
+    with pytest.raises(imap_client.ImapMessageNotFound):
+        _ = c.fetch_rfc822(1)

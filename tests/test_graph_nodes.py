@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from agent.config import Settings
 from agent.deps import Deps

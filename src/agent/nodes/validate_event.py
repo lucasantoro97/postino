@@ -12,7 +12,11 @@ def validate_event_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
         next_state = dict(state)
         next_state.update({"validated_event": None, "event_reject_reason": "no-candidates"})
         return next_state
-    res = validate_event_candidate(candidates[0], default_tz=deps.settings.tz)
+    res = validate_event_candidate(
+        candidates[0],
+        default_tz=deps.settings.tz,
+        context_text=str(state.get("text") or ""),
+    )
     if not res.ok:
         next_state = dict(state)
         next_state.update({"validated_event": None, "event_reject_reason": res.reason})

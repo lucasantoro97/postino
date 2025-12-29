@@ -422,8 +422,7 @@ class StateStore:
 
     def record_daily_recap(self, *, local_date: str, draft_uid: int | None) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO daily_recaps(local_date, draft_uid, created_at) "
-            "VALUES(?,?,?)",
+            "INSERT OR REPLACE INTO daily_recaps(local_date, draft_uid, created_at) VALUES(?,?,?)",
             (local_date, draft_uid, _utc_now().isoformat()),
         )
         self._conn.commit()
@@ -437,8 +436,7 @@ class StateStore:
 
     def record_weekly_recap(self, *, week_key: str, draft_uid: int | None) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO weekly_recaps(week_key, draft_uid, created_at) "
-            "VALUES(?,?,?)",
+            "INSERT OR REPLACE INTO weekly_recaps(week_key, draft_uid, created_at) VALUES(?,?,?)",
             (week_key, draft_uid, _utc_now().isoformat()),
         )
         self._conn.commit()

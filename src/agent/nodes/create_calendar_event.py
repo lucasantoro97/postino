@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from ..deps import Deps
+from ..meeting_links import extract_meeting_links
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,15 @@ def create_calendar_event_node(state: dict[str, Any], deps: Deps) -> dict[str, A
         )
         return state
     deps.store.set_calendar_event_id(meta.folder, meta.uid, event_id)
+    text = str(state.get("text") or "")
     logger.info(
         "Calendar event created",
         extra={
             "event": "calendar_event_created",
             "email_uid": meta.uid,
             "email_folder": meta.folder,
+            "calendar_invite_detected": "[CalendarInvite]" in text,
+            "meeting_links_found": len(extract_meeting_links(text)),
         },
     )
     next_state = dict(state)

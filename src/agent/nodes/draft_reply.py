@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
-
 from email.utils import parseaddr
+from typing import Any
 
 from ..deps import Deps
 from ..llm_openrouter import _detect_language
@@ -86,6 +85,9 @@ def _is_addressed_to_user(meta: Any, user_email: str) -> bool:
     if recipients:
         return user_email in recipients
     raw = " ".join(part for part in [meta.to_addr, meta.cc_addr] if part)
+    if not raw.strip():
+        # If recipient headers aren't available, don't block draft creation.
+        return True
     return user_email in raw.lower()
 
 
@@ -98,7 +100,7 @@ def _compute_reply_all_cc(meta: Any, user_email: str) -> list[str]:
         addr = addr.lower().strip()
         if not addr or addr in seen:
             continue
-        if addr == user_email or addr == to_addr:
+        if addr in (user_email, to_addr):
             continue
         seen.add(addr)
         cc.append(addr)
@@ -151,7 +153,11 @@ def draft_reply_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
     except Exception:
         logger.exception(
             "Failed fetching flags",
-            extra={"event": "imap_flags_failed", "email_uid": meta.uid, "email_folder": meta.folder},
+            extra={
+                "event": "imap_flags_failed",
+                "email_uid": meta.uid,
+                "email_folder": meta.folder,
+            },
         )
         flags = set()
     if "\\Answered" in flags:

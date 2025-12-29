@@ -79,9 +79,7 @@ class Settings(BaseSettings):
     )
 
     daily_recap_enabled: bool = Field(default=True, validation_alias="DAILY_RECAP_ENABLED")
-    daily_recap_time_local: str = Field(
-        default="18:00", validation_alias="DAILY_RECAP_TIME_LOCAL"
-    )
+    daily_recap_time_local: str = Field(default="18:00", validation_alias="DAILY_RECAP_TIME_LOCAL")
     daily_recap_lookback_hours: int = Field(
         default=24, validation_alias="DAILY_RECAP_LOOKBACK_HOURS"
     )
@@ -91,9 +89,7 @@ class Settings(BaseSettings):
     )
 
     weekly_recap_enabled: bool = Field(default=True, validation_alias="WEEKLY_RECAP_ENABLED")
-    weekly_recap_day_local: str = Field(
-        default="Mon", validation_alias="WEEKLY_RECAP_DAY_LOCAL"
-    )
+    weekly_recap_day_local: str = Field(default="Mon", validation_alias="WEEKLY_RECAP_DAY_LOCAL")
     weekly_recap_time_local: str = Field(
         default="08:00", validation_alias="WEEKLY_RECAP_TIME_LOCAL"
     )
