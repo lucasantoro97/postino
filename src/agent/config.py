@@ -106,6 +106,14 @@ class Settings(BaseSettings):
     )
 
     replied_digest_enabled: bool = Field(default=True, validation_alias="REPLIED_DIGEST_ENABLED")
+    # Reply digest scheduling: interval-based (hourly by default).
+    replied_digest_interval_minutes: int = Field(
+        default=60, validation_alias="REPLIED_DIGEST_INTERVAL_MINUTES"
+    )
+    replied_digest_lookback_minutes: int = Field(
+        default=60, validation_alias="REPLIED_DIGEST_LOOKBACK_MINUTES"
+    )
+    # Backward compatible, no longer used for scheduling but kept to avoid breaking existing envs.
     replied_digest_time_local: str = Field(
         default="18:15", validation_alias="REPLIED_DIGEST_TIME_LOCAL"
     )

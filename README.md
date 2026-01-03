@@ -86,7 +86,9 @@ Weekly Recap:
 Reply Digest:
 
 - `REPLIED_DIGEST_ENABLED` (default `true`)
-- `REPLIED_DIGEST_TIME_LOCAL` (default `18:15`)
+- `REPLIED_DIGEST_INTERVAL_MINUTES` (default `60`) – how often to send the digest (hourly by default).
+- `REPLIED_DIGEST_LOOKBACK_MINUTES` (default `60`) – which window to summarize (to avoid duplicate entries).
+- `REPLIED_DIGEST_TIME_LOCAL` (legacy; no longer used for scheduling)
 - `REPLIED_DIGEST_TO` (default `IMAP_USERNAME`)
 - `REPLIED_DIGEST_SUBJECT_PREFIX` (default `[Reply Digest]`)
 
@@ -157,4 +159,35 @@ ruff check .
 ruff format --check .
 pytest
 mypy src
+```
+
+## Workflow (scheme)
+
+```mermaid
+flowchart TB
+  subgraph pollLoop [PollLoop]
+    Poll[PollIMAP INBOX] --> Fetch[FetchRFC822+Flags]
+    Fetch --> Parse[ParseEmail to meta+text]
+    Parse --> Graph[LangGraphInvoke]
+  end
+
+  subgraph graphNodes [LangGraphNodes]
+    Graph --> Priority[priority_score]
+    Priority --> Classify[classify_email (LLM)]
+    Classify --> Decide[decide_actions]
+    Decide --> Draft[draft_reply (LLM)]
+    Draft --> Extract[extract_event (LLM)]
+    Extract --> Validate[validate_event]
+    Validate --> Create[create_calendar_event]
+    Create --> File[file_email (MOVE/COPY)]
+    File --> Persist[persist_state]
+  end
+
+  subgraph scheduled [ScheduledTasks]
+    Brief[ExecutiveBrief] --> Drafts[Append to Drafts]
+    Daily[DailyRecap] --> Sent1[Append to Sent]
+    Weekly[WeeklyRecap] --> Sent2[Append to Sent]
+    HourlyDigest[ReplyDigest hourly] --> Sent3[Append to Sent]
+    Reconcile[ReconcileReplied] --> MoveToReplied[Move ToReply to Replied]
+  end
 ```

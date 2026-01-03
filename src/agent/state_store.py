@@ -131,6 +131,15 @@ class StateStore:
         )
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS replied_digest_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              draft_uid INTEGER,
+              created_at TEXT NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS replied_moves (
               local_date TEXT NOT NULL,
               message_id TEXT,
@@ -472,6 +481,31 @@ class StateStore:
             "INSERT INTO replied_moves(local_date, message_id, subject, from_addr, moved_at) "
             "VALUES(?,?,?,?,?)",
             (local_date, message_id, subject, from_addr, _utc_now().isoformat()),
+        )
+        self._conn.commit()
+
+    def replied_moves_since(self, *, since_utc_iso: str) -> list[RepliedMove]:
+        rows = self._conn.execute(
+            """
+            SELECT message_id, subject, from_addr
+            FROM replied_moves
+            WHERE moved_at >= ?
+            ORDER BY moved_at DESC
+            """,
+            (since_utc_iso,),
+        ).fetchall()
+        return [RepliedMove(**dict(r)) for r in rows]
+
+    def replied_digest_last_created_at(self) -> str | None:
+        row = self._conn.execute(
+            "SELECT created_at FROM replied_digest_runs ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        return str(row["created_at"]) if row else None
+
+    def record_replied_digest_run(self, *, draft_uid: int | None) -> None:
+        self._conn.execute(
+            "INSERT INTO replied_digest_runs(draft_uid, created_at) VALUES(?,?)",
+            (draft_uid, _utc_now().isoformat()),
         )
         self._conn.commit()
 

@@ -78,3 +78,20 @@ def test_state_store_replied_moves(tmp_path) -> None:  # type: ignore[no-untyped
     moves = store.replied_moves_for_date(local_date="2025-01-01")
     assert len(moves) == 1
     assert moves[0].message_id == "<m1>"
+
+
+def test_state_store_replied_moves_since_and_digest_run_tracking(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    store = StateStore(tmp_path / "db.sqlite")
+    assert store.replied_digest_last_created_at() is None
+    store.record_replied_digest_run(draft_uid=123)
+    assert store.replied_digest_last_created_at() is not None
+
+    # moved_at is stored as UTC ISO; use a low since_utc_iso so the row is included.
+    store.record_replied_move(
+        local_date="2025-01-01",
+        message_id="<m2>",
+        subject="Subj2",
+        from_addr="b@example.com",
+    )
+    moves = store.replied_moves_since(since_utc_iso="1970-01-01T00:00:00+00:00")
+    assert len(moves) >= 1

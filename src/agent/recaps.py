@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .state_store import RecentMessage, StateStore
@@ -112,22 +112,25 @@ def build_replied_digest(
     *,
     store: StateStore,
     now_local: datetime,
+    lookback_minutes: int,
     subject_prefix: str,
 ) -> Recap:
-    local_date = now_local.strftime("%Y-%m-%d")
-    moves = store.replied_moves_for_date(local_date=local_date)
+    now_utc = now_local.astimezone(timezone.utc)
+    since = (now_utc - timedelta(minutes=int(lookback_minutes))).isoformat()
+    moves = store.replied_moves_since(since_utc_iso=since)
     lines: list[str] = []
-    lines.append(f"Reply Cleanup Digest — {local_date}")
+    stamp = now_local.strftime("%Y-%m-%d %H:00")
+    lines.append(f"Reply Cleanup Digest — {stamp}")
     lines.append("")
     if not moves:
-        lines.append("No replied messages were removed from ToReply today.")
+        lines.append(f"No replied messages were removed from ToReply in the last {lookback_minutes} minutes.")
     else:
-        lines.append("Moved out of ToReply (replied):")
+        lines.append(f"Moved out of ToReply (replied) in the last {lookback_minutes} minutes:")
         for m in moves[:50]:
             subj = (m.subject or "").strip().replace("\n", " ")
             from_addr = (m.from_addr or "").strip().replace("\n", " ")
             lines.append(f"- {subj} — {from_addr}")
-    subject = f"{subject_prefix} {local_date}"
+    subject = f"{subject_prefix} {now_local.strftime('%Y-%m-%d %H:00')}"
     return Recap(subject=subject, body="\n".join(lines).strip() + "\n")
 
 

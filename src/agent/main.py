@@ -275,25 +275,27 @@ def maybe_run_replied_digest(*, deps: Deps) -> None:
     settings = deps.settings
     if not settings.replied_digest_enabled:
         return
-    ok, local_date = should_run_daily(
-        now_utc=datetime.now(tz=timezone.utc),
-        tz=settings.tz,
-        time_local_hhmm=settings.replied_digest_time_local,
-    )
-    if not ok:
-        return
-    if deps.store.replied_digest_exists(local_date=local_date):
-        return
+    now_utc = datetime.now(tz=timezone.utc)
+    last_run = deps.store.replied_digest_last_created_at()
+    if last_run:
+        try:
+            last_dt = datetime.fromisoformat(last_run)
+            if (now_utc - last_dt).total_seconds() < settings.replied_digest_interval_minutes * 60:
+                return
+        except Exception:
+            # If parsing fails, default to running (and overwrite the bad state by recording a run).
+            pass
     digest = build_replied_digest(
         store=deps.store,
-        now_local=datetime.now(tz=timezone.utc).astimezone(ZoneInfo(settings.tz)),
+        now_local=now_utc.astimezone(ZoneInfo(settings.tz)),
+        lookback_minutes=settings.replied_digest_lookback_minutes,
         subject_prefix=settings.replied_digest_subject_prefix,
     )
     to_addr = settings.replied_digest_to or settings.imap_username
     sent_uid = _send_recap_message(
         deps=deps, subject=digest.subject, body=digest.body, to_addr=to_addr
     )
-    deps.store.record_replied_digest(local_date=local_date, draft_uid=sent_uid)
+    deps.store.record_replied_digest_run(draft_uid=sent_uid)
     logger.info("Reply digest sent", extra={"event": "reply_digest_sent"})
 
 
