@@ -4,7 +4,7 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterable
 
 REDACT_KEYS = ("password", "secret", "api_key", "token", "authorization")
 
@@ -46,10 +46,12 @@ class JsonFormatter(logging.Formatter):
         ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
+        if hasattr(record, "extra"):
+            payload["extra"] = _redact(getattr(record, "extra"))
         return json.dumps(_redact(payload), ensure_ascii=False)
 
 
-def configure_logging(level: str = "INFO") -> None:
+def configure_logging(level: str = "INFO", *, debug_loggers: Iterable[str] | None = None) -> None:
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(level.upper())
@@ -57,3 +59,10 @@ def configure_logging(level: str = "INFO") -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
+    if debug_loggers:
+        for logger_name in debug_loggers:
+            logger = logging.getLogger(logger_name)
+            logger.handlers.clear()
+            logger.setLevel(logging.DEBUG)
+            logger.propagate = False
+            logger.addHandler(handler)

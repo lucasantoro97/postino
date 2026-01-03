@@ -159,7 +159,11 @@ class StateStore:
 
     def seen_message(self, folder: str, uid: int) -> bool:
         row = self._conn.execute(
-            "SELECT 1 FROM messages WHERE folder=? AND uid=? AND filing_status='moved'",
+            """
+            SELECT 1
+            FROM messages
+            WHERE folder=? AND uid=? AND filing_status IN ('moved', 'skipped', 'replied')
+            """,
             (folder, uid),
         ).fetchone()
         return row is not None
@@ -353,7 +357,7 @@ class StateStore:
             FROM messages
             WHERE folder=?
               AND attempts>0
-              AND (filing_status IS NULL OR filing_status!='moved')
+              AND (filing_status IS NULL OR filing_status NOT IN ('moved', 'skipped', 'replied'))
               AND updated_at <= ?
             ORDER BY updated_at ASC
             LIMIT ?

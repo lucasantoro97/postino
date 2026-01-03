@@ -86,27 +86,36 @@ class OpenRouterLlm(LlmClient):
         self._client = OpenAI(api_key=cfg.api_key, base_url=cfg.base_url)
         self._model = cfg.model
 
-    def _chat_text(self, *, system: str, user: str) -> str:
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            temperature=0,
-            messages=[
+    def _chat(self, *, system: str, user: str, response_format: dict | None = None) -> str:
+        payload = {
+            "model": self._model,
+            "temperature": 0,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        )
+        }
+        if response_format is not None:
+            payload["response_format"] = response_format
+        try:
+            resp = self._client.chat.completions.create(**payload)
+        except Exception as exc:
+            if response_format is None:
+                raise
+            logger.warning(
+                "JSON mode failed; retrying without response_format",
+                extra={"extra": {"error": str(exc)}},
+            )
+            payload.pop("response_format", None)
+            resp = self._client.chat.completions.create(**payload)
         return (resp.choices[0].message.content or "").strip()
 
-    def _chat_json_value(self, *, system: str, user: str) -> object:
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            temperature=0,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        )
-        content = (resp.choices[0].message.content or "").strip()
+    def _chat_text(self, *, system: str, user: str) -> str:
+        return self._chat(system=system, user=user)
+
+    def _chat_json_value(self, *, system: str, user: str, expected: str) -> object:
+        response_format = {"type": "json_object"} if expected == "object" else None
+        content = self._chat(system=system, user=user, response_format=response_format)
         # Handle cases where LLM wraps JSON in markdown code blocks
         if content.startswith("```"):
             # Find the first { or [ after the first ```
@@ -121,17 +130,43 @@ class OpenRouterLlm(LlmClient):
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"LLM did not return JSON: {content[:500]}") from e
+            repaired = self._repair_json(text=content, expected=expected)
+            repaired = repaired.strip()
+            if repaired.startswith("```"):
+                lines = repaired.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                repaired = "\n".join(lines).strip()
+            try:
+                parsed = json.loads(repaired)
+            except json.JSONDecodeError as repair_error:
+                raise RuntimeError(f"LLM did not return JSON: {content[:500]}") from repair_error
         return parsed
 
+    def _repair_json(self, *, text: str, expected: str) -> str:
+        if expected == "list":
+            system = (
+                "You are a strict JSON formatter. Convert the input to a JSON array only. "
+                "If the input says there are no items, return []."
+            )
+        else:
+            system = (
+                "You are a strict JSON formatter. Convert the input to a JSON object only. "
+                "Do not include markdown or extra text."
+            )
+        user = f"Input:\n{text}\n\nReturn only JSON."
+        return self._chat_text(system=system, user=user)
+
     def _chat_json(self, *, system: str, user: str) -> dict:
-        parsed = self._chat_json_value(system=system, user=user)
+        parsed = self._chat_json_value(system=system, user=user, expected="object")
         if not isinstance(parsed, dict):
             raise RuntimeError(f"LLM did not return a JSON object: {str(parsed)[:500]}")
         return parsed
 
     def _chat_json_list(self, *, system: str, user: str) -> list:
-        parsed = self._chat_json_value(system=system, user=user)
+        parsed = self._chat_json_value(system=system, user=user, expected="list")
         if isinstance(parsed, list):
             return parsed
         # Some models occasionally return a single object instead of a singleton list.
@@ -146,6 +181,8 @@ class OpenRouterLlm(LlmClient):
             "You classify emails into one of: "
             "ToReply, Receipts, Newsletters, Notifications, "
             "CalendarCreated, NoAction, NeedsReview. "
+            "Set contains_event_request=true when the email includes a meeting time "
+            "or an explicit deadline (e.g., 'by Friday', 'entro il 12/01'). "
             "Return ONLY valid JSON matching the schema."
         )
         schema_hint = {

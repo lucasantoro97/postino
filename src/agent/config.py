@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     imap_initial_lookback_days: int = Field(
         default=14, validation_alias="IMAP_INITIAL_LOOKBACK_DAYS"
     )
+    imap_skip_answered: bool = Field(default=True, validation_alias="IMAP_SKIP_ANSWERED")
+    deadline_regex_fallback: bool = Field(
+        default=False, validation_alias="DEADLINE_REGEX_FALLBACK"
+    )
 
     imap_filing_mode: Literal["move", "copy"] = Field(
         default="move", validation_alias="IMAP_FILING_MODE"
@@ -120,6 +124,7 @@ class Settings(BaseSettings):
         default=None, validation_alias="GOOGLE_OAUTH_CLIENT_SECRET_JSON"
     )
     google_calendar_id: str = Field(default="primary", validation_alias="GOOGLE_CALENDAR_ID")
+    parser_debug: bool = Field(default=False, validation_alias="PARSER_DEBUG")
 
     @property
     def database_path(self) -> Path:

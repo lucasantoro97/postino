@@ -25,6 +25,15 @@ from .rfc822 import build_executive_brief_email
 from .state_store import StateStore
 
 logger = logging.getLogger(__name__)
+_ANSWERED_FLAG = "answered"
+
+
+def _has_answered_flag(flags: set[str]) -> bool:
+    for flag in flags:
+        normalized = flag.strip().lstrip("\\").lower()
+        if normalized == _ANSWERED_FLAG:
+            return True
+    return False
 
 
 def initial_backfill_uids(*, deps: Deps, inbox: str, lookback_days: int) -> list[int]:
@@ -73,6 +82,7 @@ def ensure_folders(*, settings: Settings, imap: ImapClient) -> None:
 def process_one_uid(*, deps: Deps, graph, uid: int) -> None:  # type: ignore[no-untyped-def]
     settings = deps.settings
     deps.imap.select(settings.imap_folder_inbox, readonly=False)
+    flags = deps.imap.fetch_flags(uid)
     try:
         raw = deps.imap.fetch_rfc822(uid)
     except ImapMessageNotFound:
@@ -113,6 +123,23 @@ def process_one_uid(*, deps: Deps, graph, uid: int) -> None:  # type: ignore[no-
         date=meta.date,
         fingerprint=fingerprint,
     )
+    if settings.imap_skip_answered and _has_answered_flag(flags):
+        logger.info(
+            "Skipping answered email",
+            extra={
+                "event": "email_skipped_answered",
+                "email_uid": meta.uid,
+                "email_folder": meta.folder,
+                "extra": {"flags": sorted(flags)},
+            },
+        )
+        deps.store.set_filing_result(
+            meta.folder,
+            meta.uid,
+            filing_folder=meta.folder,
+            status="skipped",
+        )
+        return
 
     state = {"meta": meta, "text": text, "fingerprint": fingerprint}
     try:
@@ -357,7 +384,10 @@ def reconcile_replied_messages(*, deps: Deps) -> None:
 def main() -> None:
     settings = Settings()  # type: ignore[call-arg]
     settings.agent_data_dir.mkdir(parents=True, exist_ok=True)
-    configure_logging(settings.log_level)
+    debug_loggers = None
+    if settings.parser_debug:
+        debug_loggers = ("agent.email_parse", "agent.nodes.decide_actions")
+    configure_logging(settings.log_level, debug_loggers=debug_loggers)
 
     store = StateStore(settings.database_path)
     llm = _build_llm(settings)

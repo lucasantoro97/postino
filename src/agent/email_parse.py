@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from email import policy
 from email.message import Message
@@ -13,6 +14,7 @@ from .models import EmailMeta
 
 _MSG_ID_RE = re.compile(r"<[^>]+>")
 _ICS_UNFOLD_RE = re.compile(r"(\r?\n)[ \t]+")
+logger = logging.getLogger(__name__)
 
 
 def _decode_part(part: Message) -> str:
@@ -158,5 +160,22 @@ def parse_email(raw: bytes, *, folder: str, uid: int) -> tuple[EmailMeta, str, s
         reply_to=reply_to,
         subject=subject,
         date=date,
+    )
+    logger.debug(
+        "Parsed email payload",
+        extra={
+            "event": "email_parsed",
+            "email_uid": uid,
+            "email_folder": folder,
+            "calendar_invite_detected": bool(calendar_parts),
+            "extra": {
+                "plain_parts": len(plain_parts),
+                "html_parts": len(html_parts),
+                "calendar_parts": len(calendar_parts),
+                "attachments": len(attachment_names),
+                "text_length": len(text),
+                "message_id_present": bool(message_id),
+            },
+        },
     )
     return meta, text, fingerprint

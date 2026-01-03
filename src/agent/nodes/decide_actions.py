@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from ..deps import Deps
 from ..llm_openrouter import decide_actions
 from ..models import ClassificationCategory
+
+logger = logging.getLogger(__name__)
 
 _DEADLINE_KEYWORDS = (
     "deadline",
@@ -32,11 +35,18 @@ _DATE_PATTERNS = [
 ]
 
 
-def _looks_like_deadline(text: str) -> bool:
+def _deadline_signals(text: str) -> tuple[bool, bool]:
     lowered = text.lower()
-    if not any(keyword in lowered for keyword in _DEADLINE_KEYWORDS):
+    keyword_hit = any(keyword in lowered for keyword in _DEADLINE_KEYWORDS)
+    date_hit = any(pattern.search(lowered) for pattern in _DATE_PATTERNS)
+    return keyword_hit, date_hit
+
+
+def _looks_like_deadline(text: str) -> bool:
+    keyword_hit, date_hit = _deadline_signals(text)
+    if not keyword_hit:
         return False
-    return any(pattern.search(lowered) for pattern in _DATE_PATTERNS)
+    return date_hit
 
 
 def decide_actions_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
@@ -44,9 +54,40 @@ def decide_actions_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
     if classification.confidence < deps.settings.imap_classification_confidence_threshold:
         classification.category = ClassificationCategory.NeedsReview
     actions = decide_actions(classification)
-    if not actions.extract_event and _looks_like_deadline(state.get("text", "")):
+    text = state.get("text", "")
+    keyword_hit = False
+    date_hit = False
+    if deps.settings.deadline_regex_fallback or deps.settings.parser_debug:
+        keyword_hit, date_hit = _deadline_signals(text)
+        logger.debug(
+            "Deadline heuristic signals",
+            extra={
+                "event": "deadline_signals",
+                "email_uid": getattr(state.get("meta"), "uid", None),
+                "email_folder": getattr(state.get("meta"), "folder", None),
+                "extra": {
+                    "keyword_hit": keyword_hit,
+                    "date_hit": date_hit,
+                    "text_length": len(text),
+                },
+            },
+        )
+    if (
+        deps.settings.deadline_regex_fallback
+        and (not actions.extract_event)
+        and keyword_hit
+        and date_hit
+    ):
         actions.extract_event = True
         actions.create_calendar_event = True
+        logger.info(
+            "Deadline heuristic forced event extraction",
+            extra={
+                "event": "deadline_override",
+                "email_uid": getattr(state.get("meta"), "uid", None),
+                "email_folder": getattr(state.get("meta"), "folder", None),
+            },
+        )
     filing_folder = deps.settings.classification_folders.get(
         classification.category.value,
         "NeedsReview",
