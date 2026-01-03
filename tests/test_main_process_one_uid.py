@@ -11,6 +11,9 @@ class FakeImapMissing:
     def select(self, mailbox: str, *, readonly: bool = False) -> None:  # noqa: ARG002
         return None
 
+    def fetch_flags(self, uid: int) -> set[str]:
+        raise ImapMessageNotFound(f"missing uid={uid}")
+
     def fetch_rfc822(self, uid: int) -> bytes:
         raise ImapMessageNotFound(f"missing uid={uid}")
 

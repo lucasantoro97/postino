@@ -22,7 +22,8 @@ def test_deadline_text_triggers_event_actions() -> None:
         confidence=1.0,
         rationale="",
         reply_needed=False,
-        contains_event_request=False,
+        # No regex fallback: we expect the classifier/LLM to decide this upstream.
+        contains_event_request=True,
     )
     state = {"classification": classification, "text": "Please send the report by 12/01/2026."}
     out = decide_actions_node(state, deps)

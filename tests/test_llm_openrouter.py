@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.agent.llm_openrouter import OpenRouterConfig, OpenRouterLlm
+from agent.llm_openrouter import OpenRouterConfig, OpenRouterLlm
 
 
 @pytest.fixture
@@ -82,3 +82,18 @@ def test_chat_json_raises_on_invalid_json(mock_cfg):
 
     with pytest.raises(RuntimeError, match="LLM did not return JSON"):
         llm._chat_json(system="sys", user="user")
+
+
+def test_extract_events_returns_empty_on_non_json_model_reply(mock_cfg, monkeypatch):
+    llm = OpenRouterLlm(mock_cfg)
+
+    def fake_chat_json(*, system, user):  # type: ignore[no-untyped-def]
+        raise RuntimeError("LLM did not return JSON: plain text")
+
+    monkeypatch.setattr(OpenRouterLlm, "_chat_json", staticmethod(fake_chat_json))
+
+    meta = MagicMock()
+    meta.uid = 123
+    meta.model_dump_json.return_value = "{}"
+
+    assert llm.extract_events(meta=meta, text="hello") == []

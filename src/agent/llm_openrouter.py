@@ -246,36 +246,54 @@ class OpenRouterLlm(LlmClient):
         )
 
     def extract_events(self, *, meta: EmailMeta, text: str) -> list[EventCandidate]:
+        # NOTE: Some models frequently violate "return a JSON array" instructions. To increase
+        # compliance, request a JSON OBJECT in JSON-mode and read its "items" array.
         system = (
-            "Extract calendar events and deadline-based TODOs from emails. "
-            "Create events for meetings or explicit scheduling requests. "
-            "For tasks with a deadline (e.g., 'by Friday', 'entro il 12/01'), "
-            "create a short TODO event at the deadline time and prefix the summary with 'TODO:'. "
-            "If you see a video-call / meeting URL (e.g. meet.google.com, zoom.us, "
-            "teams.microsoft.com, webex), "
-            "put it in the 'location' field and also include it in 'evidence'. "
-            "Return ONLY valid JSON: an array of event candidates. "
+            "Extract calendar events and deadline-based TODOs from emails.\n"
+            "- Create events for meetings or explicit scheduling requests.\n"
+            "- For tasks with a deadline (e.g., 'by Friday', 'entro il 12/01'), create a short TODO "
+            "event at the deadline time and prefix the summary with 'TODO:'.\n"
+            "- If you see a video-call / meeting URL (e.g. meet.google.com, zoom.us, "
+            "teams.microsoft.com, webex), put it in the 'location' field and also include it in "
+            "'evidence'.\n\n"
+            "Return ONLY valid JSON and nothing else.\n"
+            "Return a JSON object with exactly this shape: {\"items\": [ ... ]}.\n"
+            "If there are no events, return: {\"items\": []}.\n"
             "Do not invent dates or times; only extract if present."
         )
-        schema_hint = [
-            {
-                "summary": "string",
-                "start": "ISO or natural language datetime",
-                "end": "ISO or natural language datetime or null",
-                "duration_minutes": 30,
-                "timezone": "IANA tz or null",
-                "location": "string or null",
-                "evidence": ["short quote"],
-            }
-        ]
+        schema_hint = {
+            "items": [
+                {
+                    "summary": "string",
+                    "start": "ISO or natural language datetime",
+                    "end": "ISO or natural language datetime or null",
+                    "duration_minutes": 30,
+                    "timezone": "IANA tz or null",
+                    "location": "string or null",
+                    "evidence": ["short quote"],
+                }
+            ]
+        }
         user = (
             f"Email meta:\n{meta.model_dump_json(exclude_none=True)}\n\n"
             f"Email text:\n{text[:12000]}\n\n"
             f"Return JSON like:\n{json.dumps(schema_hint)}"
         )
-        raw = self._chat_json_list(system=system, user=user)
+        try:
+            raw_obj = self._chat_json(system=system, user=user)
+        except Exception:
+            # Never crash the workflow for event extraction failures.
+            logger.info("Event extraction failed; treating as no events", extra={"extra": {"uid": meta.uid}})
+            return []
+        raw_items = raw_obj.get("items", [])
+        if not isinstance(raw_items, list):
+            logger.info(
+                "Event extraction returned invalid items shape; treating as no events",
+                extra={"extra": {"uid": meta.uid, "type": type(raw_items).__name__}},
+            )
+            return []
         out: list[EventCandidate] = []
-        for item in raw:
+        for item in raw_items:
             try:
                 out.append(EventCandidate.model_validate(item))
             except ValidationError:

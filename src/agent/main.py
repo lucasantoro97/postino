@@ -82,8 +82,8 @@ def ensure_folders(*, settings: Settings, imap: ImapClient) -> None:
 def process_one_uid(*, deps: Deps, graph, uid: int) -> None:  # type: ignore[no-untyped-def]
     settings = deps.settings
     deps.imap.select(settings.imap_folder_inbox, readonly=False)
-    flags = deps.imap.fetch_flags(uid)
     try:
+        flags = deps.imap.fetch_flags(uid)
         raw = deps.imap.fetch_rfc822(uid)
     except ImapMessageNotFound:
         # The message may have been expunged/moved between SEARCH and FETCH, or it may be a stale

@@ -271,8 +271,11 @@ class ImapClient:
     def fetch_flags(self, uid: int) -> set[str]:
         assert self._imap is not None
         typ, data = cast(tuple[str, list[Any]], self._imap.uid("FETCH", str(uid), "(FLAGS)"))
-        if typ != "OK" or not data:
+        if typ != "OK":
             raise RuntimeError(f"IMAP UID FETCH failed: {typ} {data}")
+        if not data or not data[0]:
+            # Some servers return OK with empty/None payload for vanished UIDs.
+            raise ImapMessageNotFound(f"IMAP UID FETCH returned no data for uid={uid}: {data}")
         for item in data:
             if isinstance(item, tuple) and item and isinstance(item[0], (bytes, bytearray)):
                 m = _FLAGS_RE.search(item[0])
