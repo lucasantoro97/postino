@@ -123,7 +123,9 @@ def build_replied_digest(
     lines.append(f"Reply Cleanup Digest — {stamp}")
     lines.append("")
     if not moves:
-        lines.append(f"No replied messages were removed from ToReply in the last {lookback_minutes} minutes.")
+        lines.append(
+            f"No replied messages were removed from ToReply in the last {lookback_minutes} minutes."
+        )
     else:
         lines.append(f"Moved out of ToReply (replied) in the last {lookback_minutes} minutes:")
         for m in moves[:50]:

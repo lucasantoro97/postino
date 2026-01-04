@@ -44,6 +44,8 @@ Required IMAP:
 - `IMAP_CREATE_FOLDERS_ON_STARTUP` (default `true`)
 - `IMAP_FILING_MODE` (`move` or `copy`, default `move`)
 - `IMAP_CLASSIFICATION_FOLDERS_JSON` (optional JSON mapping; defaults provided in code)
+- `IMAP_INITIAL_LOOKBACK_DAYS` (default `0`) – on first run only, optionally backfill and process messages from the last N days; set to `0` to start "from now" and only process new incoming mail.
+- `IMAP_RECONCILE_LOOKBACK_DAYS` (default `30`) – how far back to look when scanning the Sent folder to auto-move replied items out of `ToReply`.
 - `VIP_SENDERS_JSON` (optional JSON list of emails/domains)
 
 LLM (OpenRouter):

@@ -8,6 +8,8 @@ def test_state_store_last_uid_roundtrip(tmp_path) -> None:  # type: ignore[no-un
     store = StateStore(tmp_path / "db.sqlite")
     store.set_last_uid("INBOX", 10)
     assert store.get_last_uid("INBOX") == 10
+    store.set_last_uid("INBOX", 5)
+    assert store.get_last_uid("INBOX") == 10
 
 
 def test_state_store_pending_replies(tmp_path) -> None:  # type: ignore[no-untyped-def]

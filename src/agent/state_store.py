@@ -161,7 +161,9 @@ class StateStore:
     def set_last_uid(self, folder: str, last_uid: int) -> None:
         self._conn.execute(
             "INSERT INTO folder_state(folder,last_uid) VALUES(?,?) "
-            "ON CONFLICT(folder) DO UPDATE SET last_uid=excluded.last_uid",
+            "ON CONFLICT(folder) DO UPDATE SET last_uid="
+            "CASE WHEN excluded.last_uid > folder_state.last_uid "
+            "THEN excluded.last_uid ELSE folder_state.last_uid END",
             (folder, int(last_uid)),
         )
         self._conn.commit()
@@ -387,16 +389,33 @@ class StateStore:
         ).fetchall()
         return [RecentMessage(**dict(r)) for r in rows]
 
-    def reply_candidates(self, *, filing_folder: str) -> list[ReplyCandidate]:
-        rows = self._conn.execute(
-            """
-            SELECT folder, uid, message_id, subject, from_addr, date, filing_folder
-            FROM messages
-            WHERE reply_needed=1 AND message_id IS NOT NULL AND filing_folder=?
-            ORDER BY updated_at DESC
-            """,
-            (filing_folder,),
-        ).fetchall()
+    def reply_candidates(
+        self, *, filing_folder: str, lookback_days: int | None = None
+    ) -> list[ReplyCandidate]:
+        if lookback_days is None:
+            rows = self._conn.execute(
+                """
+                SELECT folder, uid, message_id, subject, from_addr, date, filing_folder
+                FROM messages
+                WHERE reply_needed=1 AND message_id IS NOT NULL AND filing_folder=?
+                ORDER BY updated_at DESC
+                """,
+                (filing_folder,),
+            ).fetchall()
+        else:
+            since = (_utc_now() - timedelta(days=lookback_days)).isoformat()
+            rows = self._conn.execute(
+                """
+                SELECT folder, uid, message_id, subject, from_addr, date, filing_folder
+                FROM messages
+                WHERE reply_needed=1
+                  AND message_id IS NOT NULL
+                  AND filing_folder=?
+                  AND updated_at >= ?
+                ORDER BY updated_at DESC
+                """,
+                (filing_folder, since),
+            ).fetchall()
         return [ReplyCandidate(**dict(r)) for r in rows]
 
     def mark_replied(self, folder: str, uid: int, *, replied_folder: str) -> None:

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import imaplib
 import logging
+import ssl
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from zoneinfo import ZoneInfo
 
 from .config import Settings
@@ -37,11 +41,13 @@ def _has_answered_flag(flags: set[str]) -> bool:
 
 
 def initial_backfill_uids(*, deps: Deps, inbox: str, lookback_days: int) -> list[int]:
-    since_date = (datetime.now(tz=timezone.utc) - timedelta(days=lookback_days)).date()
-    uids = deps.imap.uid_search_since_date(since_date)
     all_uids = deps.imap.uid_search_all()
     if all_uids:
         deps.store.set_last_uid(inbox, max(all_uids))
+    if lookback_days <= 0:
+        return []
+    since_date = (datetime.now(tz=timezone.utc) - timedelta(days=lookback_days)).date()
+    uids = deps.imap.uid_search_since_date(since_date)
     return uids
 
 
@@ -305,7 +311,10 @@ def reconcile_replied_messages(*, deps: Deps) -> None:
         return
     to_reply_folder = settings.classification_folders.get("ToReply", "ToReply")
     replied_folder = settings.imap_replied_folder or "NoAction"
-    candidates = deps.store.reply_candidates(filing_folder=to_reply_folder)
+    candidates = deps.store.reply_candidates(
+        filing_folder=to_reply_folder,
+        lookback_days=deps.settings.imap_reconcile_lookback_days,
+    )
     if not candidates:
         return
     try:
@@ -415,12 +424,27 @@ def main() -> None:
                 last_reconcile = 0.0
                 while True:
                     try:
-                        maybe_run_executive_brief(deps=deps)
-                        maybe_run_daily_recap(deps=deps)
-                        maybe_run_weekly_recap(deps=deps)
-                        maybe_run_replied_digest(deps=deps)
+
+                        def _safe_job(job_name: str, fn: Callable[[], None]) -> None:
+                            try:
+                                fn()
+                            except Exception as e:
+                                logger.exception(
+                                    "Scheduled job failed",
+                                    extra={"event": "scheduled_job_failed", "job": job_name},
+                                )
+                                if isinstance(e, (imaplib.IMAP4.abort, ssl.SSLError)):
+                                    raise
+
+                        _safe_job("executive_brief", partial(maybe_run_executive_brief, deps=deps))
+                        _safe_job("daily_recap", partial(maybe_run_daily_recap, deps=deps))
+                        _safe_job("weekly_recap", partial(maybe_run_weekly_recap, deps=deps))
+                        _safe_job("replied_digest", partial(maybe_run_replied_digest, deps=deps))
                         if time.time() - last_reconcile >= settings.poll_seconds:
-                            reconcile_replied_messages(deps=deps)
+                            _safe_job(
+                                "reconcile_replied",
+                                partial(reconcile_replied_messages, deps=deps),
+                            )
                             last_reconcile = time.time()
 
                         imap.select(inbox, readonly=False)
@@ -481,8 +505,12 @@ def main() -> None:
                                     },
                                 )
                         time.sleep(settings.poll_seconds)
-                    except Exception:
+                    except Exception as e:
                         logger.exception("Poll loop error", extra={"event": "poll_loop_error"})
+                        # IMAP aborts generally mean the underlying socket/SSL stream is broken;
+                        # break out so the outer loop re-establishes a fresh connection.
+                        if isinstance(e, (imaplib.IMAP4.abort, ssl.SSLError)):
+                            break
                         time.sleep(min(settings.poll_seconds, 30))
         except Exception:
             logger.exception(

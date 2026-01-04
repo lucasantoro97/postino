@@ -147,6 +147,11 @@ def draft_reply_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
             "Skipping draft for email not addressed to account",
             extra={"event": "draft_skipped_not_addressed", "email_uid": meta.uid},
         )
+        actions.create_draft = False
+        if "filing_folder" in state:
+            state["filing_folder"] = deps.settings.classification_folders.get(
+                "NeedsReview", "NeedsReview"
+            )
         return state
     try:
         flags = deps.imap.fetch_flags(meta.uid)
@@ -165,6 +170,9 @@ def draft_reply_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
             "Skipping draft for answered email",
             extra={"event": "draft_skipped_answered", "email_uid": meta.uid},
         )
+        actions.create_draft = False
+        if "filing_folder" in state:
+            state["filing_folder"] = deps.settings.imap_replied_folder or state["filing_folder"]
         return state
     if deps.settings.imap_sent_folder and meta.message_id:
         sent_folder = deps.settings.imap_sent_folder
@@ -176,6 +184,9 @@ def draft_reply_node(state: dict[str, Any], deps: Deps) -> dict[str, Any]:
                 "Skipping draft for already replied email",
                 extra={"event": "draft_skipped_sent_match", "email_uid": meta.uid},
             )
+            actions.create_draft = False
+            if "filing_folder" in state:
+                state["filing_folder"] = deps.settings.imap_replied_folder or state["filing_folder"]
             return state
     existing = deps.store.get_message_draft_uid(meta.folder, meta.uid)
     if existing:

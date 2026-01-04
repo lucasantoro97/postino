@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from openai import OpenAI
 from pydantic import ValidationError
@@ -87,7 +87,7 @@ class OpenRouterLlm(LlmClient):
         self._model = cfg.model
 
     def _chat(self, *, system: str, user: str, response_format: dict | None = None) -> str:
-        payload = {
+        payload: dict[str, Any] = {
             "model": self._model,
             "temperature": 0,
             "messages": [
@@ -129,7 +129,7 @@ class OpenRouterLlm(LlmClient):
 
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             repaired = self._repair_json(text=content, expected=expected)
             repaired = repaired.strip()
             if repaired.startswith("```"):
@@ -251,8 +251,8 @@ class OpenRouterLlm(LlmClient):
         system = (
             "Extract calendar events and deadline-based TODOs from emails.\n"
             "- Create events for meetings or explicit scheduling requests.\n"
-            "- For tasks with a deadline (e.g., 'by Friday', 'entro il 12/01'), create a short TODO "
-            "event at the deadline time and prefix the summary with 'TODO:'.\n"
+            "- For tasks with a deadline (e.g., 'by Friday', 'entro il 12/01'), create a short "
+            "TODO event at the deadline time and prefix the summary with 'TODO:'.\n"
             "- If you see a video-call / meeting URL (e.g. meet.google.com, zoom.us, "
             "teams.microsoft.com, webex), put it in the 'location' field and also include it in "
             "'evidence'.\n\n"
@@ -283,7 +283,9 @@ class OpenRouterLlm(LlmClient):
             raw_obj = self._chat_json(system=system, user=user)
         except Exception:
             # Never crash the workflow for event extraction failures.
-            logger.info("Event extraction failed; treating as no events", extra={"extra": {"uid": meta.uid}})
+            logger.info(
+                "Event extraction failed; treating as no events", extra={"extra": {"uid": meta.uid}}
+            )
             return []
         raw_items = raw_obj.get("items", [])
         if not isinstance(raw_items, list):

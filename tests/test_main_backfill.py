@@ -41,3 +41,16 @@ def test_initial_backfill_sets_last_uid(tmp_path) -> None:  # type: ignore[no-un
     uids = initial_backfill_uids(deps=deps, inbox="INBOX", lookback_days=14)
     assert uids == [1, 2]
     assert store.get_last_uid("INBOX") == 10
+
+
+def test_initial_backfill_zero_days_starts_from_now(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    settings = Settings(IMAP_HOST="h", IMAP_USERNAME="me@example.com", IMAP_PASSWORD="x")
+    settings.agent_data_dir = tmp_path
+    store = StateStore(tmp_path / "db.sqlite")
+    imap = FakeImap(since_calls=[], since_uids=[1, 2], all_uids=[9, 10])
+    deps = Deps(settings=settings, store=store, imap=imap, llm=None, calendar=None)  # type: ignore[arg-type]
+
+    uids = initial_backfill_uids(deps=deps, inbox="INBOX", lookback_days=0)
+    assert uids == []
+    # Still records a cursor so subsequent polls only see new mail.
+    assert store.get_last_uid("INBOX") == 10

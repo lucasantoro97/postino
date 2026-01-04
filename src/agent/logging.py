@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any
 
 REDACT_KEYS = ("password", "secret", "api_key", "token", "authorization")
 
@@ -47,7 +48,7 @@ class JsonFormatter(logging.Formatter):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
         if hasattr(record, "extra"):
-            payload["extra"] = _redact(getattr(record, "extra"))
+            payload["extra"] = _redact(record.extra)
         return json.dumps(_redact(payload), ensure_ascii=False)
 
 
